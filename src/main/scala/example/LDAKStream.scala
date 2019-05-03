@@ -34,7 +34,10 @@ object LDAKStream extends App {
   }
 
   val appConfig = parser.parse(args, KStreamConfig()).get
+
+  println("loading the model")
   val model = LDAModel.load(appConfig.modelPath)
+  println("model loaded successfully")
 
 
   val config: Properties = {
