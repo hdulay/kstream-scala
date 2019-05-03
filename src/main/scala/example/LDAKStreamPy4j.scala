@@ -11,15 +11,14 @@ import org.apache.kafka.streams.scala.StreamsBuilder
 import org.apache.kafka.streams.scala.kstream.KStream
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
 import scopt.OptionParser
+import py4j.GatewayServer
 
-case class KStreamConfig(modelPath: String = "./dns.lda.model",
-                         name: String = "lda kstream",
-                         broker: String = "localhost:9092",
-                         source : String = "dns",
-                         suspicious : String = "suspicious",
-                         good: String = "good")
 
-object LDAKStream extends App {
+trait PyModel {
+  def score(event: String): Double
+}
+
+object LDAKStreamPy4j extends App {
 
   val parser = new OptionParser[KStreamConfig]("lda kstream") {
     head("lda-kstream", "1.0")
@@ -34,10 +33,17 @@ object LDAKStream extends App {
 
   val appConfig = parser.parse(args, KStreamConfig()).get
 
-  println("loading the model")
-  val model = LDAModel.load(appConfig.modelPath)
-  println("model loaded successfully")
+  import py4j.GatewayServer
 
+  GatewayServer.turnLoggingOff()
+  val server: GatewayServer = new GatewayServer
+  server.start()
+
+  val model: PyModel = server.getPythonServerEntryPoint(Array[Class[_]](classOf[PyModel])).asInstanceOf[PyModel]
+
+  val probs: Double = model.score("test me")
+
+  println(probs)
 
   val config: Properties = {
     val p = new Properties()
@@ -55,16 +61,7 @@ object LDAKStream extends App {
       * branch(0) - if max probability is less than .3, then the event is suspicious
       */
     (k, v) =>  {
-      // Create a new instance named "test instance" with empty target and source fields.
-      val event = new InstanceList(model.getPipe)
-      event.addThruPipe(new Instance(v, null, "instance", null))
-
-      val inferencer = model.getModel.getInferencer
-      val probabilities = inferencer.getSampledDistribution(event.get(0), 10, 1, 5)
-
-      val stream = util.Arrays.stream(probabilities)
-      val p = stream.max.getAsDouble // find the max probability. we don't care which topic it belongs
-      p < .3 // Threshold, if lower, then doesn't belong to any existing topic
+        model.score(v) < .3 // Threshold, if lower, then doesn't belong to any existing topic
     },
 
     /**
@@ -87,6 +84,7 @@ object LDAKStream extends App {
 
   sys.ShutdownHookThread {
     streams.close(Duration.ofSeconds(10))
+    server.shutdown()
   }
 
 }
