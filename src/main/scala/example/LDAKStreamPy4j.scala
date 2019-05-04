@@ -35,15 +35,17 @@ object LDAKStreamPy4j extends App {
 
   import py4j.GatewayServer
 
+  /**
+    * Start the Py4J gateway server
+    */
   GatewayServer.turnLoggingOff()
   val server: GatewayServer = new GatewayServer
   server.start()
 
+  /**
+    * Load the python model
+    */
   val model: PyModel = server.getPythonServerEntryPoint(Array[Class[_]](classOf[PyModel])).asInstanceOf[PyModel]
-
-  val probs: Double = model.score("test me")
-
-  println(probs)
 
   val config: Properties = {
     val p = new Properties()
