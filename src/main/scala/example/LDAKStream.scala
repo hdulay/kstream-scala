@@ -16,6 +16,7 @@ import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
+import scala.util.Random
 
 case class KStreamConfig(modelPath: String = "./dns.lda.model",
                          name: String = "lda kstream",
@@ -43,14 +44,15 @@ object LDAKStream extends App {
   /**
     * Make sure you create the DNS topic first else it will not start.
     */
-  val textLines: KStream[String, String] = builder.stream[String, String](appConfig.source)
+  val dnsLogs: KStream[String, String] = builder.stream[String, String](appConfig.source)
 
-  val branches = textLines.branch(
+  val branches = dnsLogs.branch(
     /**
       * branch(0) - if max probability is less than .3, then the event is suspicious
       */
     (k, v) =>  {
       val model = ModelConsumer.getModel()
+      println(s"using model: ${model.name}")
 
       // Create a new instance named "test instance" with empty target and source fields.
       val event = new InstanceList(model.instances.getPipe)
@@ -92,10 +94,10 @@ object ModelConsumer {
 
   val props = new Properties()
   props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
-  props.put(ConsumerConfig.GROUP_ID_CONFIG, "lda.model")
+  props.put(ConsumerConfig.GROUP_ID_CONFIG, s"lda.model-${Random.nextString(5)}")
   props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
   props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[ByteArrayDeserializer].getName)
-  props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
+  props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest")
 
   import scala.concurrent.ExecutionContext.Implicits.global
   var model: Option[LDAModel] = Option.empty
@@ -104,33 +106,31 @@ object ModelConsumer {
     import scala.collection.JavaConverters._
     val modelConsumer = new KafkaConsumer[String, Array[Byte]](props)
     modelConsumer.subscribe(Arrays.asList("lda.model"))
-    var tmp: Option[Array[Byte]] = Option.empty
     while(true) {
       val modelRecords = modelConsumer.poll(java.time.Duration.ofSeconds(2))
       if(!modelRecords.isEmpty) {
-        tmp = Some(modelRecords.iterator()
+        val tmp = modelRecords.iterator()
           .asScala
           .toStream
           .max(Ordering[Long].on[ConsumerRecord[String, Array[Byte]]](_.timestamp()))
           .value()
-        )
+        model = deserializeModel(tmp)
+        println("new model")
       }
       else {
-        if(tmp.isEmpty) {
+        if(model.isEmpty) {
           val partition = new TopicPartition("lda.model", 0)
-          modelConsumer.seek(partition, modelConsumer.committed(partition).offset() - 1)
-        }
-        else {
-          model = deserializeModel(tmp.get)
-          tmp = Option.empty
+          val position = modelConsumer.endOffsets(Arrays.asList(partition)).get(partition)
+          modelConsumer.seek(partition, position - 1)
         }
       }
     }
   }
 
   val firstModel = Future {
+    println("waiting for model")
     while(model.isEmpty) {
-      println("waiting for model")
+      print('.')
       Thread.sleep(1000)
     }
     model

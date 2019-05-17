@@ -17,4 +17,4 @@ FROM confluentinc/cp-kafka-connect:5.2.1
 
 COPY . /project
 
-RUN connect-standalone /project/file-connector/file.properties /project/file-connector/connector.properties
+RUN curl -d "@/project/docker/file-connector/create-file-connector.json" -X PUT -H "Content-Type: application/json" http://connect:8083/connectors/dns.logs/config

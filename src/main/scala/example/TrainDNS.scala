@@ -1,7 +1,6 @@
 package example
 
 import java.io.{ByteArrayOutputStream, ObjectOutputStream}
-import java.util
 import java.util._
 
 import org.apache.kafka.clients.consumer.{ConsumerConfig, KafkaConsumer}
@@ -14,15 +13,19 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
 import scala.util.control.Breaks._
 
-case class TrainingConfig(k: Int = 100)
+case class TrainingConfig(k: Int = 100, topic: String = "dns-train")
 
 object TrainDNS extends App {
 
   val logger = LoggerFactory.getLogger("lda-trainer")
 
+  val config = TrainingConfig()
+  val topic = config.topic
+  val k = config.k
+
   val props = new Properties()
   props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
-  props.put(ConsumerConfig.GROUP_ID_CONFIG, "lda-training")
+  props.put(ConsumerConfig.GROUP_ID_CONFIG, s"lda-training-${util.Random.nextString(5)}")
   props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
   props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
   props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
@@ -41,7 +44,7 @@ object TrainDNS extends App {
     * Consume the training data
     */
   val consumer = new KafkaConsumer[String, String](props)
-  consumer.subscribe(Arrays.asList("dns-train"))
+  consumer.subscribe(Arrays.asList(topic))
 
   /**
     * Produce the model
@@ -62,20 +65,23 @@ object TrainDNS extends App {
     while (true) {
       val baos = new ByteArrayOutputStream()
       try {
-        consumer.seekToBeginning(util.Collections.emptyList())
-        val records = consumer.poll(java.time.Duration.ofMinutes(5))
+        val records = consumer.poll(java.time.Duration.ofSeconds(30))
           .iterator()
           .asScala
           .toArray
           .map(r => r.value())
 
         /**
-          * When there are no more records or if the amount of data is too much,
-          * start training
+          * If records is empty, offset position is at the end and no more
+          * messages are available to consume.
+          *
+          * Or if the allRecords size is too big
+          *
+          * Start training
           */
-        if(records.isEmpty || allRecords.size > 300000) {
+        if((records.isEmpty && !allRecords.isEmpty) || allRecords.size > 300000) {
           println(s"training size: ${allRecords.size}")
-          val model = LDAModel.train(allRecords.takeRight(300000).toArray, 100)
+          val model = LDAModel.train(allRecords.toArray, k)
           val out = new ObjectOutputStream(baos)
           out.writeObject(model)
 
@@ -89,7 +95,6 @@ object TrainDNS extends App {
             }
             else println(exception)
           })
-          break
         }
 
         /**

@@ -1,6 +1,8 @@
 package example
 
 import java.io._
+import java.time.Instant
+import java.util.Date
 import java.util.regex.Pattern
 
 import cc.mallet.pipe._
@@ -57,7 +59,9 @@ object LDAModel {
 }
 
 @SerialVersionUID(1L)
-case class LDAModel(model: ParallelTopicModel, instances: InstanceList) extends Serializable {
+case class LDAModel(model: ParallelTopicModel, instances: InstanceList,
+                    name: String = s"lda.mmodel.${Date.from(Instant.now())}")
+  extends Serializable {
 
   override def toString: String = {
     // The data alphabet maps word IDs to strings

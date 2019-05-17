@@ -51,7 +51,7 @@ services:
     image: confluentinc/kafka-connect-datagen:latest
     build:
       context: .
-      dockerfile: docker/datagen/Dockerfile
+      dockerfile: docker/file-connector/Dockerfile
     hostname: connect
     container_name: connect
     depends_on:
