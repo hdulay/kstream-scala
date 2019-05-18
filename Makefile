@@ -69,6 +69,6 @@ connect-restart:
 	docker exec -it connect curl -X POST http://connect:8083/connectors/dns.logs/restart | jq 
 
 ksql:
-	docker exec -it ksql-cli echo "create stream bad2 (data VARCHAR) WITH (KAFKA_TOPIC='suspicious', VALUE_FORMAT='DELIMITED');" > q
-	docker exec -it ksql-cli http://ksql-server:8088 < q
+	# docker exec -it ksql-cli echo "create stream bad2 (data VARCHAR) WITH (KAFKA_TOPIC='suspicious', VALUE_FORMAT='DELIMITED');" > q
+	# docker exec -it ksql-cli http://ksql-server:8088 < q
 	docker exec -it ksql-cli ksql http://ksql-server:8088

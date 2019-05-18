@@ -21,20 +21,51 @@ docker run --rm -v `pwd`:/pcap -v `pwd`/local.bro:/usr/local/bro/share/bro/site/
 
 You don't have to use the data above nor does it have to be DNS log events. You can train your own data.
 
+
+## Make Steps
+Build the scala code. You will need to install both sbt and scala 2.12 using Homebrew.
+```
+$ make build
+```
+
+Download the data
+```
+$ make ddata
+```
+
+Build and start the Kafka cluster
+```
+$ make cluster
+```
+
+Build the connect worker and topics
+```
+$ make connect
+```
+
+Open 4 terminals
+1. For training the model. This app will train every 30 seconds.
+	```
+	$ make train
+	```
+1. For KStreams realtime scoring. This will load new models the training app is producing. The models will have a timestamp on them to show when they were created.
+	```
+	$ make kstream
+	```
+1. For KSQL. The KSQL will watch for the suspicious topic and print out the bad messages.
+	```
+	$ make ksql
+	> create stream bad (data VARCHAR) WITH (KAFKA_TOPIC='suspicious', VALUE_FORMAT='DELIMITED');
+	> select * from bad;
+	```
+1. For a Kafka producer. You can copy some good messages in [the training data](data/dns.log) and paste them in the producer for good messages. Type anything else for bad messages.
+	```
+	$ make producer
+	```
+
+Model training is ongoing. When completed, the model is placed in a topic. The KStreams app waits for a model to appear and uses it to score incoming message.
+
+
 ## Train the model
-After downloading, extracting and parsing the dns log data, I train the model using LDA. See TrainDNS.scala. This
-scala class trains the LDA model and serializes the it to a file. This file is loaded by the KStreams application
-to score incoming data from a Kakfa topic then routes suspicious dns requests to a separate topic.
-
-
-## Start the producer
-Start the Kafka cluster. Deploy or run the LDAKStreams.scala application. Depending on how much data you trained the model
-with, you might wait for 5 min. The more data you trained on, the bigger the serialized model and the longer the JVM will
-take to load it to memory. The application will display `model loaded successfully` when finished loading.
-
-Start the producer with the command below and send it messages copied from your dns logs. It should end up in the good
-topic. Next type some random words. This message should end up in the suspicious topic.
-```
-kafka-console-producer --broker-list localhost:9092 --topic dns
-```
+I train the model using LDA. See TrainDNS.scala. This scala class trains the LDA model and serializes it to a Kafka topic. The model is loaded by the KStreams application to score incoming data from a Kakfa topic then routes suspicious dns requests to a separate topic.
 
