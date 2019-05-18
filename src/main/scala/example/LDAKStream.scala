@@ -2,7 +2,7 @@ package example
 
 import java.io.{ByteArrayInputStream, ObjectInputStream}
 import java.util
-import java.util.{Arrays, Collections, Properties}
+import java.util.{Arrays, Properties}
 
 import cc.mallet.types.{Instance, InstanceList}
 import org.apache.kafka.clients.consumer._

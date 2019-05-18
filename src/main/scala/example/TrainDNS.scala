@@ -11,21 +11,24 @@ import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ListBuffer
-import scala.util.control.Breaks._
 
-case class TrainingConfig(k: Int = 100, topic: String = "dns-train")
+case class TrainingConfig(
+ k: Int = 100,
+ topics: java.util.Collection[String] = Arrays.asList("dns-train", "good")
+)
 
 object TrainDNS extends App {
 
   val logger = LoggerFactory.getLogger("lda-trainer")
 
   val config = TrainingConfig()
-  val topic = config.topic
+  val topics = config.topics
   val k = config.k
+  val bootstrap_servers = args(0)
 
   val props = new Properties()
-  props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
-  props.put(ConsumerConfig.GROUP_ID_CONFIG, s"lda-training-${util.Random.nextString(5)}")
+  props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap_servers)
+  props.put(ConsumerConfig.GROUP_ID_CONFIG, s"lda-training-${scala.util.Random.nextString(5)}")
   props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
   props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
   props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
@@ -44,7 +47,7 @@ object TrainDNS extends App {
     * Consume the training data
     */
   val consumer = new KafkaConsumer[String, String](props)
-  consumer.subscribe(Arrays.asList(topic))
+  consumer.subscribe(topics)
 
   /**
     * Produce the model
@@ -59,65 +62,56 @@ object TrainDNS extends App {
   /**
     * Accumulate all records for training
     */
-  var allRecords = new ListBuffer[String]
+  val allRecords = new ListBuffer[String]
 
-  breakable {
-    while (true) {
-      val baos = new ByteArrayOutputStream()
-      try {
-        val records = consumer.poll(java.time.Duration.ofSeconds(30))
-          .iterator()
-          .asScala
-          .toArray
-          .map(r => r.value())
+  while (true) {
+    val baos = new ByteArrayOutputStream()
+    try {
+      val records = consumer.poll(java.time.Duration.ofSeconds(30))
+        .iterator()
+        .asScala
+        .toArray
+        .map(r => r.value())
 
-        /**
-          * If records is empty, offset position is at the end and no more
-          * messages are available to consume.
-          *
-          * Or if the allRecords size is too big
-          *
-          * Start training
-          */
-        if((records.isEmpty && !allRecords.isEmpty) || allRecords.size > 300000) {
-          println(s"training size: ${allRecords.size}")
-          val model = LDAModel.train(allRecords.toArray, k)
-          val out = new ObjectOutputStream(baos)
-          out.writeObject(model)
+      /**
+        * If records are empty, start training on the data
+        */
+      if((records.isEmpty && !allRecords.isEmpty)) {
+        println(s"training size: ${allRecords.size}")
+        val model = LDAModel.train(allRecords.toArray, k)
+        val out = new ObjectOutputStream(baos)
+        out.writeObject(model)
 
-          val ba = baos.toByteArray
-          println(s"model size: ${ba.size}")
-          val record = new ProducerRecord[String, Array[Byte]] ("lda.model",
-            s"lda-${System.currentTimeMillis()}", ba)
-          producer.send(record, (metadata: RecordMetadata, exception: Exception) => {
-            if (exception == null) {
-              println(s"Model has been serialized to topic : ${metadata.topic()}")
-            }
-            else println(exception)
-          })
-        }
-
-        /**
-          * Accumulate the records
-          */
-        allRecords ++= records
-
+        val ba = baos.toByteArray
+        println(s"model size: ${ba.size}")
+        val record = new ProducerRecord[String, Array[Byte]] ("lda.model",
+          s"lda-${System.currentTimeMillis()}", ba)
+        producer.send(record, (metadata: RecordMetadata, exception: Exception) => {
+          if (exception == null) {
+            println(s"Model has been serialized to topic : ${metadata.topic()}")
+          }
+          else println(exception)
+        })
       }
-      catch {
-        case w: WakeupException => {
-          println(s"received shutdown signal: $w")
-          consumer.close()
-          producer.close()
-          break
-        }
-        case e: Throwable => {
-          println(e)
-          break
-        }
+
+      /**
+        * Accumulate the records
+        */
+      allRecords ++= records
+
+    }
+    catch {
+      case w: WakeupException => {
+        println(s"received shutdown signal: $w")
+        consumer.close()
+        producer.close()
       }
-      finally {
-        baos.close()
+      case e: Throwable => {
+        println(e)
       }
+    }
+    finally {
+      baos.close()
     }
   }
 
