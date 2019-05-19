@@ -85,7 +85,7 @@ object TrainDNS extends App {
         val ba = baos.toByteArray
         println(s"model size: ${ba.size}")
         val record = new ProducerRecord[String, Array[Byte]] ("lda.model",
-          s"lda-${System.currentTimeMillis()}", ba)
+          s"lda.model", ba)
         producer.send(record, (metadata: RecordMetadata, exception: Exception) => {
           if (exception == null) {
             println(s"Model has been serialized to topic : ${metadata.topic()}")

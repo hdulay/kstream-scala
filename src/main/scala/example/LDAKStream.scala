@@ -6,7 +6,6 @@ import java.util.{Arrays, Properties}
 
 import cc.mallet.types.{Instance, InstanceList}
 import org.apache.kafka.clients.consumer._
-import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{ByteArrayDeserializer, StringDeserializer}
 import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala.Serdes._
@@ -30,7 +29,6 @@ object LDAKStream extends App {
 
   val appConfig = KStreamConfig()
 
-
   val config: Properties = {
     val p = new Properties()
     p.put(StreamsConfig.APPLICATION_ID_CONFIG, appConfig.name)
@@ -51,7 +49,7 @@ object LDAKStream extends App {
       * branch(0) - if max probability is less than .3, then the event is suspicious
       */
     (k, v) =>  {
-      val model = ModelConsumer.getModel()
+      val model = ModelConsumer(appConfig.broker).getModel()
       println(s"using model: ${model.name}")
 
       // Create a new instance named "test instance" with empty target and source fields.
@@ -90,21 +88,26 @@ object LDAKStream extends App {
 
 }
 
-object ModelConsumer {
+case class ModelConsumer(bootstrapServers : String = "localhost:9092") {
 
   val props = new Properties()
-  props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092")
+  props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
   props.put(ConsumerConfig.GROUP_ID_CONFIG, s"lda.model-${Random.nextString(5)}")
   props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
   props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[ByteArrayDeserializer].getName)
-  props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest")
+  props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
 
   import scala.concurrent.ExecutionContext.Implicits.global
   var model: Option[LDAModel] = Option.empty
 
+  val modelConsumer = new KafkaConsumer[String, Array[Byte]](props)
+  sys.ShutdownHookThread {
+    modelConsumer.wakeup()
+  }
+
   val future = Future {
     import scala.collection.JavaConverters._
-    val modelConsumer = new KafkaConsumer[String, Array[Byte]](props)
+
     modelConsumer.subscribe(Arrays.asList("lda.model"))
     while(true) {
       val modelRecords = modelConsumer.poll(java.time.Duration.ofSeconds(2))
@@ -116,13 +119,6 @@ object ModelConsumer {
           .value()
         model = deserializeModel(tmp)
         println("new model")
-      }
-      else {
-        if(model.isEmpty) {
-          val partition = new TopicPartition("lda.model", 0)
-          val position = modelConsumer.endOffsets(Arrays.asList(partition)).get(partition)
-          modelConsumer.seek(partition, position - 1)
-        }
       }
     }
   }

@@ -193,3 +193,15 @@ services:
     container_name: scala
     environment:
       KAFKA_BOOTSTRAP_SERVERS: 'broker:9092'
+
+  druid:
+    image: fokkodriesprong/docker-druid
+    hostname: druid
+    container_name: druid
+    ports:
+      - "8082:8082"
+      - "8081:8081"
+      - "8090:8090"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: 'broker:9092'
+

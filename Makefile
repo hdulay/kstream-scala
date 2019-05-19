@@ -28,7 +28,10 @@ cluster:
 
 connect:
 	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create --topic dns --partitions 1 --replication-factor 1
-	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create --topic good --partitions 1 --replication-factor 1
+	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create 
+		--topic good \
+		--partitions 1 \
+		--replication-factor 1 \
 		--partitions 1 \
 		--replication-factor 1 \
 		--config retention.ms=60000
@@ -37,7 +40,9 @@ connect:
 		--partitions 1 \
 		--replication-factor 1 \
 		--config max.message.bytes=1000000000 \
-		--config retention.ms=60000
+		--config retention.ms=60000 \
+		--config cleanup.policy=compact \
+		--config compression.type=gzip
 	docker exec -it connect curl -d "@/project/docker/file-connector/create-file-connector.json" \
 		-X PUT \
 		-H "Content-Type: application/json" \
