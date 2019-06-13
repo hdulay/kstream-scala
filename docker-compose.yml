@@ -48,7 +48,7 @@ services:
       SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: 'zookeeper:2181'
 
   connect:
-    image: hubert/kafka-connect-file:latest
+    image: hubert/kafka-connect-file:5.2.1
     build:
       context: .
       dockerfile: docker/file-connector/Dockerfile
@@ -204,6 +204,7 @@ services:
       hostname: trainer
       container_name: trainer
       command: /project/docker/trainer/start.sh
+      # command: tail -F anything
       volumes:
         - .:/project
 
@@ -217,6 +218,7 @@ services:
         dockerfile: docker/kstream/Dockerfile
       hostname: kstream
       container_name: kstream
-      command: /project/docker/kstream/start.sh
+      # command: /project/docker/kstream/start.sh
+      command: tail -F anything
       volumes:
         - .:/project

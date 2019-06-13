@@ -1,5 +1,5 @@
 #!/bin/bash
-sleep 20
+sleep 30
 for i in {1..10}
 do 
 	scala \
@@ -10,4 +10,5 @@ do
 		-a artifactory:8080 \
 		-o /project \
 		-c 300000
+	sleep 30
 done

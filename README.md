@@ -38,30 +38,27 @@ Build and start the Kafka cluster
 $ make cluster
 ```
 
-Build the connect worker and topics
-```
-$ make connect
-```
-
 Open 4 terminals
-1. For training the model. This app will train every 30 seconds.
+1. 
 	```
-	$ make train
+	$ make producer
 	```
-1. For KStreams realtime scoring. This will load new models the training app is producing. The models will have a timestamp on them to show when they were created.
+1. 
 	```
-	$ make kstream
+	$ make suspicious
 	```
+1. 
+	```
+	$ make agg
+	```
+
 1. For KSQL. The KSQL will watch for the suspicious topic and print out the bad messages.
 	```
 	$ make ksql
 	> create stream bad (data VARCHAR) WITH (KAFKA_TOPIC='suspicious', VALUE_FORMAT='DELIMITED');
 	> select * from bad;
 	```
-1. For a Kafka producer. You can copy some good messages in [the training data](data/dns.log) and paste them in the producer for good messages. Type anything else for bad messages.
-	```
-	$ make producer
-	```
+
 
 Model training is ongoing. When completed, the model is placed in a topic. The KStreams app waits for a model to appear and uses it to score incoming message.
 

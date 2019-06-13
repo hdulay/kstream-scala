@@ -1,9 +1,9 @@
-build: scala dbuild
+build: sbuild dbuild
 
 dbuild:
 	docker-compose build
 
-scala:
+sbuild:
 	docker run --rm -it -v ${PWD}:/project -w /project hseeberger/scala-sbt sbt clean assembly
 
 download: 
@@ -46,7 +46,7 @@ topics:
 
 connect:
 	echo "starting connect file sink"
-	sleep 20
+	sleep 30
 	docker exec -it connect curl -d "@/project/docker/file-connector/create-file-connector.json" \
 		-X PUT \
 		-H "Content-Type: application/json" \
@@ -64,8 +64,8 @@ suspicious:
 good:
 	docker exec -it broker kafka-console-consumer --bootstrap-server localhost:9092 --topic good
 
-dns-train:
-	docker exec -it broker kafka-console-consumer --bootstrap-server localhost:9092 --topic dns-train --from-beginning
+plogs:
+	docker logs -f trainer
 
 clist:
 	docker exec -it connect curl http://connect:8083/connectors | jq
@@ -86,3 +86,16 @@ down:
 
 ps:
 	docker-compose ps
+
+agg:
+	docker exec -it broker kafka-console-consumer \
+		--bootstrap-server broker:9092  \
+        --topic dns-good-bad-counts \
+        --from-beginning \
+        --formatter kafka.tools.DefaultMessageFormatter \
+        --property print.key=true \
+        --property key.deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+        --property value.deserializer=org.apache.kafka.common.serialization.LongDeserializer
+
+clean:
+	rm lda.*
