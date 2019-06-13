@@ -1,12 +1,15 @@
 package example
 
-import java.io.{ByteArrayInputStream, ObjectInputStream}
+import java.io.ObjectInputStream
+import java.net.{HttpURLConnection, URL}
 import java.util
 import java.util.{Arrays, Properties}
 
 import cc.mallet.types.{Instance, InstanceList}
+import com.google.gson.Gson
 import org.apache.kafka.clients.consumer._
-import org.apache.kafka.common.serialization.{ByteArrayDeserializer, StringDeserializer}
+import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala.Serdes._
 import org.apache.kafka.streams.scala.StreamsBuilder
@@ -15,19 +18,54 @@ import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
-import scala.util.Random
 
-case class KStreamConfig(modelPath: String = "./dns.lda.model",
-                         name: String = "lda kstream",
+case class KStreamConfig(name: String = "lda kstream",
                          broker: String = "localhost:9092",
                          source : String = "dns",
                          suspicious : String = "suspicious",
                          good: String = "good",
                          threshold: Double = .3)
 
+case class Message(value: String, key: String, score: Double, modelName: String)
+
 object LDAKStream extends App {
 
-  val appConfig = KStreamConfig()
+  val parser = new scopt.OptionParser[KStreamConfig]("dns.trainer") {
+    head("dns.trainer", "0.1")
+
+    opt[Double]('t', "threshold")
+      .optional()
+      .action( (t, c) => c.copy(threshold = t) )
+      .text("threshold value")
+
+    opt[String]('b', "broker")
+      .optional()
+      .action( (x, c) => c.copy(broker = x) )
+      .text("bootstrap server")
+
+    opt[String]('n', "name")
+      .optional()
+      .action( (x, c) => c.copy(name = x) )
+      .text("name of app")
+
+    opt[String]('d', "datasource")
+      .optional()
+      .action( (x, c) => c.copy(source = x) )
+      .text("source topic")
+
+    opt[String]('s', "suspicious")
+      .optional()
+      .action( (x, c) => c.copy(suspicious = x) )
+      .text("suspicious topic")
+
+    opt[String]('g', "good")
+      .optional()
+      .action( (x, c) => c.copy(good = x) )
+      .text("good topic")
+  }
+
+  val appConfig = parser.parse(args, KStreamConfig()).get
+  print(appConfig)
 
   val config: Properties = {
     val p = new Properties()
@@ -43,13 +81,11 @@ object LDAKStream extends App {
     * Make sure you create the DNS topic first else it will not start.
     */
   val dnsLogs: KStream[String, String] = builder.stream[String, String](appConfig.source)
+  val mc = ModelConsumer(appConfig.broker)
 
-  val branches = dnsLogs.branch(
-    /**
-      * branch(0) - if max probability is less than .3, then the event is suspicious
-      */
-    (k, v) =>  {
-      val model = ModelConsumer(appConfig.broker).getModel()
+  val branches = dnsLogs
+    .map((k,v) => {
+      val model = mc.getModel()
       println(s"using model: ${model.name}")
 
       // Create a new instance named "test instance" with empty target and source fields.
@@ -61,8 +97,14 @@ object LDAKStream extends App {
 
       val stream = util.Arrays.stream(probabilities)
       val p = stream.max.getAsDouble // find the max probability. we don't care which topic it belongs
-      p < appConfig.threshold // Threshold, if lower, then doesn't belong to any existing topic
-    },
+
+      (k,  Message(value=v, key=k, score=p, modelName=model.name))
+    })
+    .branch(
+    /**
+      * branch(0) - if max probability is less than .3, then the event is suspicious
+      */
+    (k, v) =>  v.score < appConfig.threshold, // Threshold, if lower, then doesn't belong to any existing topic
 
     /**
       * branch(1) - if the max probability is greater than .3, the event is good enough
@@ -73,11 +115,19 @@ object LDAKStream extends App {
   /**
     * write the branch(0) into the suspicious topic
     */
-  branches(0).to(appConfig.suspicious)
+  branches(0)
+    .map((k,v) => {
+      val gson = new Gson
+      val json = gson.toJson(v)
+      (k, json)
+    })
+    .to(appConfig.suspicious)
   /**
     * write the branch(1) into the good topic
     */
-  branches(1).to(appConfig.good)
+  branches(1)
+    .map((k,v) => (k, v.value))
+    .to(appConfig.good)
 
   val streams: KafkaStreams = new KafkaStreams(builder.build(), config)
   streams.start()
@@ -92,15 +142,17 @@ case class ModelConsumer(bootstrapServers : String = "localhost:9092") {
 
   val props = new Properties()
   props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
-  props.put(ConsumerConfig.GROUP_ID_CONFIG, s"lda.model-${Random.nextString(5)}")
+  props.put(ConsumerConfig.GROUP_ID_CONFIG, s"lda.model1")
   props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
-  props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[ByteArrayDeserializer].getName)
-  props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
+  props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
+  props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest")
 
   import scala.concurrent.ExecutionContext.Implicits.global
   var model: Option[LDAModel] = Option.empty
 
-  val modelConsumer = new KafkaConsumer[String, Array[Byte]](props)
+  val modelConsumer = new KafkaConsumer[String, String](props)
+  modelConsumer.subscribe(Arrays.asList("lda-model"))
+
   sys.ShutdownHookThread {
     modelConsumer.wakeup()
   }
@@ -108,17 +160,32 @@ case class ModelConsumer(bootstrapServers : String = "localhost:9092") {
   val future = Future {
     import scala.collection.JavaConverters._
 
-    modelConsumer.subscribe(Arrays.asList("lda.model"))
-    while(true) {
-      val modelRecords = modelConsumer.poll(java.time.Duration.ofSeconds(2))
-      if(!modelRecords.isEmpty) {
-        val tmp = modelRecords.iterator()
-          .asScala
-          .toStream
-          .max(Ordering[Long].on[ConsumerRecord[String, Array[Byte]]](_.timestamp()))
-          .value()
-        model = deserializeModel(tmp)
-        println("new model")
+    modelConsumer.subscribe(Arrays.asList("lda-model"))
+    var closed = false
+    val tp = new TopicPartition("lda-model", 0)
+    while(!closed) {
+      try {
+        val modelRecords = modelConsumer.poll(java.time.Duration.ofSeconds(2))
+        if (!modelRecords.isEmpty) {
+          val record = modelRecords.iterator()
+            .asScala
+            .toStream
+            .max(Ordering[Long].on[ConsumerRecord[String, String]](_.offset())) // get highest offset
+          model = deserializeModel(record.value())
+          println(s"new model : ${model.get.name}")
+        }
+        else if(model.isEmpty) {
+
+          val position = modelConsumer.position(tp)
+          modelConsumer.seek(tp, if(position < 1) position else position - 1)
+        }
+      }
+      catch {
+        case e: Throwable => {
+          e.printStackTrace()
+          modelConsumer.close()
+          closed = true
+        }
       }
     }
   }
@@ -132,14 +199,21 @@ case class ModelConsumer(bootstrapServers : String = "localhost:9092") {
     model
   }
 
-  private def deserializeModel(bytes: Array[Byte]): Option[LDAModel] = {
-    val bais = new ByteArrayInputStream(bytes)
-    val in = new ObjectInputStream(bais)
+  private def deserializeModel(path: String): Option[LDAModel] = {
+
     try {
+      val url = new URL(path)
+      val connection = url.openConnection().asInstanceOf[HttpURLConnection]
+      connection.setRequestMethod("GET")
+      val is = connection.getInputStream
+      val in = new ObjectInputStream(is)
       Some(in.readObject.asInstanceOf[LDAModel])
     }
-    finally {
-      if (in != null) in.close()
+    catch {
+      case e: Throwable => {
+        e.printStackTrace()
+        Option.empty
+      }
     }
   }
 

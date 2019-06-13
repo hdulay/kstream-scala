@@ -1,118 +1,119 @@
 package example
 
-import java.io.{ByteArrayOutputStream, ObjectOutputStream}
+import java.io._
+import java.nio.file.{Files, Paths}
 import java.util._
 
-import org.apache.kafka.clients.consumer.{ConsumerConfig, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord, RecordMetadata}
-import org.apache.kafka.common.errors.WakeupException
-import org.apache.kafka.common.serialization.{ByteArraySerializer, StringDeserializer, StringSerializer}
+import org.apache.kafka.common.serialization.StringSerializer
 import org.slf4j.LoggerFactory
 
-import scala.collection.JavaConverters._
-import scala.collection.mutable.ListBuffer
+
 
 case class TrainingConfig(
  k: Int = 100,
- topics: java.util.Collection[String] = Arrays.asList("dns-train", "good")
+ count: Int = 300000,
+ dataDir: String = "./data",
+ outDir: String = ".",
+ topics: java.util.Collection[String] = Arrays.asList("dns-train", "good"),
+ bootstrapServers: String = "localhost:9092",
+ artifactory: String = "localhost:8080"
 )
 
 object TrainDNS extends App {
 
   val logger = LoggerFactory.getLogger("lda-trainer")
 
-  val config = TrainingConfig()
+  val parser = new scopt.OptionParser[TrainingConfig]("dns.trainer") {
+    head("dns.trainer", "0.1")
+
+    opt[Int]('k', "topics")
+      .optional()
+      .action( (k, c) => c.copy(k = k) )
+      .text("number of topics to train on")
+
+    opt[Int]('c', "topics")
+      .optional()
+      .action( (k, c) => c.copy(count = k) )
+      .text("number of records to train on")
+
+    opt[String]('d', "dataDir")
+      .optional()
+      .action( (x, c) => c.copy(dataDir = x) )
+      .text("directory containing the data files to train on")
+
+    opt[String]('b', "bootstrapServers")
+      .optional()
+      .action( (x, c) => c.copy(bootstrapServers = x) )
+      .text("kafka bootstrap host:port")
+
+    opt[String]('a', "artifactory")
+      .optional()
+      .action( (x, c) => c.copy(artifactory = x) )
+      .text("artifactory host:port")
+
+    opt[String]('o', "outDir")
+      .optional()
+      .action( (x, c) => c.copy(outDir = x) )
+      .text("output directory where the model should be written and artifactory will pickup")
+  }
+
+  val config = parser.parse(args, TrainingConfig()).get
+  println(config)
+
   val topics = config.topics
   val k = config.k
-  val bootstrap_servers = args(0)
+  val bootstrap_servers = config.bootstrapServers
 
   val props = new Properties()
-  props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap_servers)
-  props.put(ConsumerConfig.GROUP_ID_CONFIG, s"lda-training-${scala.util.Random.nextString(5)}")
-  props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
-  props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, classOf[StringDeserializer].getName)
-  props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest")
-
+  props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap_servers)
   props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
-  props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[ByteArraySerializer].getName)
+  props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[StringSerializer].getName)
 
-  /**
-    * Setup producer to handle large messages
-    */
-  props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "gzip")
-  props.put(ProducerConfig.MAX_REQUEST_SIZE_CONFIG, "1000000000")
-  props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, "1000000000")
-
-  /**
-    * Consume the training data
-    */
-  val consumer = new KafkaConsumer[String, String](props)
-  consumer.subscribe(topics)
 
   /**
     * Produce the model
     */
-  val producer = new KafkaProducer[String, Array[Byte]](props)
+  val producer = new KafkaProducer[String, String](props)
 
   sys.addShutdownHook {
     println("exiting")
-    consumer.wakeup()
   }
 
-  /**
-    * Accumulate all records for training
-    */
-  val allRecords = new ListBuffer[String]
+  val docs = Files
+    .list(Paths.get(config.dataDir)) // loads all files in this directory including feedback from connector
+    .filter(Files.isRegularFile(_))  // filtering out subdirectories
+    .flatMap[String](path => Files.lines(path)) // create a records per line in all files
+    .toArray
+    .reverse                         // reversing to get last 300k
+    .slice(0, config.count)          // limiting to 300k
+    .map(_.toString)
+    .asInstanceOf[Array[String]]
 
-  while (true) {
-    val baos = new ByteArrayOutputStream()
-    try {
-      val records = consumer.poll(java.time.Duration.ofSeconds(30))
-        .iterator()
-        .asScala
-        .toArray
-        .map(r => r.value())
+  val baos = new ByteArrayOutputStream()
+  val model = LDAModel.train(docs, k)
+  val out = new ObjectOutputStream(baos)
+  out.writeObject(model)
 
-      /**
-        * If records are empty, start training on the data
-        */
-      if((records.isEmpty && !allRecords.isEmpty)) {
-        println(s"training size: ${allRecords.size}")
-        val model = LDAModel.train(allRecords.toArray, k)
-        val out = new ObjectOutputStream(baos)
-        out.writeObject(model)
+  println(s"training size: ${docs.size}")
+  val path = artifactory(baos.toByteArray, config)
+  out.close()
 
-        val ba = baos.toByteArray
-        println(s"model size: ${ba.size}")
-        val record = new ProducerRecord[String, Array[Byte]] ("lda.model",
-          s"lda.model", ba)
-        producer.send(record, (metadata: RecordMetadata, exception: Exception) => {
-          if (exception == null) {
-            println(s"Model has been serialized to topic : ${metadata.topic()}")
-          }
-          else println(exception)
-        })
-      }
+  val record = new ProducerRecord[String, String] ("lda-model","lda.model", path)
+  val future = producer.send(record, (metadata: RecordMetadata, exception: Exception) => {
+    if (exception != null) println(exception)
+  })
 
-      /**
-        * Accumulate the records
-        */
-      allRecords ++= records
+  println(s"Model has been serialized to topic: ${future.get().topic()}")
+  producer.flush()
+  producer.close()
 
-    }
-    catch {
-      case w: WakeupException => {
-        println(s"received shutdown signal: $w")
-        consumer.close()
-        producer.close()
-      }
-      case e: Throwable => {
-        println(e)
-      }
-    }
-    finally {
-      baos.close()
-    }
+  def artifactory(bytes: Array[Byte], config: TrainingConfig): String = {
+    val name = model.name
+    val out = new FileOutputStream(s"${config.outDir}/$name")
+    out.write(bytes)
+    out.flush()
+    out.close()
+    s"http://${config.artifactory}/$name"
   }
-
 }

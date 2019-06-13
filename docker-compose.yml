@@ -48,7 +48,7 @@ services:
       SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: 'zookeeper:2181'
 
   connect:
-    image: confluentinc/kafka-connect-datagen:latest
+    image: hubert/kafka-connect-file:latest
     build:
       context: .
       dockerfile: docker/file-connector/Dockerfile
@@ -60,6 +60,8 @@ services:
       - schema-registry
     ports:
       - "8083:8083"
+    volumes:
+      - .:/project
     environment:
       CONNECT_BOOTSTRAP_SERVERS: 'broker:29092'
       CONNECT_REST_ADVERTISED_HOST_NAME: connect
@@ -182,26 +184,39 @@ services:
       KAFKA_REST_LISTENERS: "http://0.0.0.0:8082"
       KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
 
-  scala:
-    image: hubert/scala
-    build:
-      context: .
-      dockerfile: docker/scala/Dockerfile
-    depends_on:
-      - broker
-    hostname: scala
-    container_name: scala
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: 'broker:9092'
+  artifactory:
+      image: halverneus/static-file-server:latest
+      hostname: artifactory
+      container_name: artifactory
+      ports:
+        - 8080:8080
+      volumes:
+        - .:/web
 
-  druid:
-    image: fokkodriesprong/docker-druid
-    hostname: druid
-    container_name: druid
-    ports:
-      - "8082:8082"
-      - "8081:8081"
-      - "8090:8090"
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: 'broker:9092'
+  trainer:
+      image: lda-trainer/scala
+      depends_on:
+        - zookeeper
+        - artifactory
+      build:
+        context: .
+        dockerfile: docker/trainer/Dockerfile
+      hostname: trainer
+      container_name: trainer
+      command: /project/docker/trainer/start.sh
+      volumes:
+        - .:/project
 
+  kstream:
+      image: lda-kstream/scala
+      depends_on:
+        - zookeeper
+        - artifactory
+      build:
+        context: .
+        dockerfile: docker/kstream/Dockerfile
+      hostname: kstream
+      container_name: kstream
+      command: /project/docker/kstream/start.sh
+      volumes:
+        - .:/project

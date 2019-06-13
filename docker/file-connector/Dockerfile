@@ -15,4 +15,5 @@
 
 FROM confluentinc/cp-kafka-connect:5.2.1
 
-COPY . /project
+RUN sed -i 's/KAFKA_HEAP_OPTS="-Xmx256M"/KAFKA_HEAP_OPTS="-Xmx1024M"/g' /usr/bin/kafka-run-class
+RUN sed -i 's/export KAFKA_HEAP_OPTS="-Xms256M -Xmx2G"/export KAFKA_HEAP_OPTS="-Xms1024M -Xmx3G"/g' /usr/bin/connect-distributed

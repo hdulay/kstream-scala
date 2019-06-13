@@ -1,6 +1,7 @@
 package example
 
 import java.io._
+import java.text.SimpleDateFormat
 import java.time.Instant
 import java.util.Date
 import java.util.regex.Pattern
@@ -54,13 +55,16 @@ object LDAModel {
     //  for real applications, use 1000 to 2000 iterations)
     model.setNumIterations(50)
     model.estimate()
-    LDAModel(model, instances)
+
+    val sdf = new SimpleDateFormat("yyyyMMddHHmmss")
+    val name = s"lda.model.${sdf.format(new Date(System.currentTimeMillis()))}_size${instances.size()}"
+    LDAModel(model, instances, name)
   }
 }
 
 @SerialVersionUID(1L)
 case class LDAModel(model: ParallelTopicModel, instances: InstanceList,
-                    name: String = s"lda.mmodel.${Date.from(Instant.now())}")
+                    name: String = s"lda.model.${Date.from(Instant.now())}")
   extends Serializable {
 
   override def toString: String = {
@@ -74,9 +78,7 @@ case class LDAModel(model: ParallelTopicModel, instances: InstanceList,
     // Show top 5 words in topics with proportions for the first document
     var topic = 0
     val size = topicSortedWords.size
-    while ( {
-      topic < size
-    }) {
+    while (topic < size) {
       val iterator = topicSortedWords.get(topic).iterator
       sb.append("%d\t%.3f\t".format(topic, topicDistribution(topic)))
       var rank = 0

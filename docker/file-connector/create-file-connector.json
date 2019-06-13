@@ -1,8 +1,6 @@
 {
-  "name": "dns.logs",
-  "connector.class": "org.apache.kafka.connect.file.FileStreamSourceConnector",
-  "key.converter": "org.apache.kafka.connect.json.JsonConverter",
-  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
-  "file": "/project/data/dns.log",
-  "topic": "dns-train"
+	"name": "feedback",
+	"connector.class": "org.apache.kafka.connect.file.FileStreamSinkConnector",
+	"topics": "good",
+	"file": "/project/data/feedback.log"
 }
