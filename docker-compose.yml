@@ -218,7 +218,7 @@ services:
         dockerfile: docker/kstream/Dockerfile
       hostname: kstream
       container_name: kstream
-      # command: /project/docker/kstream/start.sh
-      command: tail -F anything
+      command: /project/docker/kstream/start.sh
+      # command: tail -F anything
       volumes:
         - .:/project

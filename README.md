@@ -39,15 +39,15 @@ $ make cluster
 ```
 
 Open 4 terminals
-1. 
+1. Produer
 	```
 	$ make producer
 	```
-1. 
+1. Consumer of suspicious events
 	```
 	$ make suspicious
 	```
-1. 
+1. Consumer of good & bad counts
 	```
 	$ make agg
 	```
