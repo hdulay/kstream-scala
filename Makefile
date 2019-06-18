@@ -6,26 +6,8 @@ dbuild:
 sbuild:
 	docker run --rm -it -v ${PWD}:/project -w /project hseeberger/scala-sbt sbt clean assembly
 
-download: 
-	wget https://github.com/blacktop/docker-zeek/raw/master/pcap/heartbleed.pcap  -O data.pcap
-	wget https://github.com/blacktop/docker-zeek/raw/master/scripts/local.bro -O local.bro
-	wget https://s3-us-west-2.amazonaws.com/apachespot/public_data_sets/dns_aws/dns_pcap_synthetic_sample.zip
-	unzip dns_pcap_synthetic_sample.zip
-
-zeek: download
-	docker run --rm \
-         -v `pwd`:/pcap \
-         -v `pwd`/local.bro:/usr/local/bro/share/bro/site/local.bro \
-         blacktop/zeek -r dns_test01_00100_20160707221101.pcap local "Site::local_nets += { 192.168.11.0/24 }"
-
-clean-zeek: 
-	rm -f *.pcap
-	rm -f *.bro
-	rm -f *.zip
-	mv -f dns.log data
-	rm -f *.log
-
-ddata: zeek clean-zeek
+tcpdump: 
+	sudo tcpdump port 53 >> data/dns.log
 
 cluster: up topics connect
 

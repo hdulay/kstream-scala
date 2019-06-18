@@ -1,6 +1,6 @@
 #!/bin/bash
-sleep 30
-for i in {1..10}
+sleep 120
+for i in {1..100}
 do 
 	scala \
 		-J-Xmx3g \
@@ -10,5 +10,5 @@ do
 		-a artifactory:8080 \
 		-o /project \
 		-c 300000
-	sleep 30
+	sleep 60
 done

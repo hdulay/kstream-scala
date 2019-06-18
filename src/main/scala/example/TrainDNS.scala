@@ -4,9 +4,12 @@ import java.io._
 import java.nio.file.{Files, Paths}
 import java.util._
 
+import example.TrainDNS.model
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.serialization.StringSerializer
 import org.slf4j.LoggerFactory
+
+import scala.io.Source
 
 
 
@@ -19,6 +22,56 @@ case class TrainingConfig(
  bootstrapServers: String = "localhost:9092",
  artifactory: String = "localhost:8080"
 )
+
+class TrainSupport {
+  val topLevelDomains = domains()
+
+  def domains(): Array[String] = {
+    Source
+      .fromInputStream(getClass.getResourceAsStream("/top-level-domains.txt"))
+      .getLines()
+      .toStream
+      .map(_.toLowerCase())
+      .toArray
+  }
+
+  def prep(line: String): String = {
+    line
+      .toLowerCase
+      .split(" ")
+      .map(value => {
+        value.replaceAll("(?:\\W)[^\\w]", "")
+      })
+      .flatMap(value => {
+        val toke = value.trim
+        val li = toke.lastIndexOf('.')
+        val take = toke.length - toke.lastIndexOf('.') - 1
+        if(li != -1 && topLevelDomains.contains(toke.takeRight(take))) {
+          if(toke.count(_ == '.') > 1) {
+            val lefti = toke.take(li).lastIndexOf('.')
+            val encoded = toke.take(lefti)
+            val enc = if(encoded.length > 10) s"BIGENCODED $encoded" else encoded
+            val right = toke.takeRight(toke.length - lefti - 1)
+            encoded.split('.') :+ enc :+ right
+          } else {
+            Array(toke)
+          }
+        } else {
+          Array(toke)
+        }
+      })
+      .mkString(" ")
+  }
+
+  def artifactory(bytes: Array[Byte], config: TrainingConfig): String = {
+    val name = model.name
+    val out = new FileOutputStream(s"${config.outDir}/$name")
+    out.write(bytes)
+    out.flush()
+    out.close()
+    s"http://${config.artifactory}/$name"
+  }
+}
 
 object TrainDNS extends App {
 
@@ -80,6 +133,9 @@ object TrainDNS extends App {
     println("exiting")
   }
 
+  val support = new TrainSupport()
+  val topLevelDomains = support.domains()
+
   val docs = Files
     .list(Paths.get(config.dataDir)) // loads all files in this directory including feedback from connector
     .filter(Files.isRegularFile(_))  // filtering out subdirectories
@@ -87,7 +143,7 @@ object TrainDNS extends App {
     .toArray
     .reverse                         // reversing to get last 300k
     .slice(0, config.count)          // limiting to 300k
-    .map(_.toString)
+    .map(line => support.prep(line.toString))
     .asInstanceOf[Array[String]]
 
   val baos = new ByteArrayOutputStream()
@@ -96,7 +152,7 @@ object TrainDNS extends App {
   out.writeObject(model)
 
   println(s"training size: ${docs.size}")
-  val path = artifactory(baos.toByteArray, config)
+  val path = support.artifactory(baos.toByteArray, config)
   out.close()
 
   val record = new ProducerRecord[String, String] ("lda-model","lda.model", path)
@@ -108,12 +164,5 @@ object TrainDNS extends App {
   producer.flush()
   producer.close()
 
-  def artifactory(bytes: Array[Byte], config: TrainingConfig): String = {
-    val name = model.name
-    val out = new FileOutputStream(s"${config.outDir}/$name")
-    out.write(bytes)
-    out.flush()
-    out.close()
-    s"http://${config.artifactory}/$name"
-  }
+
 }

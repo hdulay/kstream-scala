@@ -12,8 +12,8 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{Deserializer, Serde, Serializer, StringDeserializer}
 import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala.Serdes._
-import org.apache.kafka.streams.scala.{Serdes, StreamsBuilder}
-import org.apache.kafka.streams.scala.kstream.{KStream, Produced}
+import org.apache.kafka.streams.scala.StreamsBuilder
+import org.apache.kafka.streams.scala.kstream.KStream
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
 
 import scala.concurrent.duration.Duration
@@ -26,7 +26,7 @@ case class KStreamConfig(name: String = "lda-kstream",
                          good: String = "good",
                          threshold: Double = .3)
 
-case class Message(value: String, key: String, score: Double, modelName: String)
+case class Message(value: String, key: String, score: Double = 0, modelName: String = "", org: String)
 
 class MessageSerde extends Serde[Message] {
 
@@ -107,18 +107,24 @@ object LDAKStream extends App {
     */
   val dnsLogs: KStream[String, String] = builder.stream[String, String](appConfig.source)
   val mc = ModelConsumer(appConfig.broker)
+  val support = new TrainSupport()
 
   /**
     * Records have been scored by model
     */
   val scored = dnsLogs
     .map((k, v) => {
+      val prep = support.prep(v)
+      val m = Message(prep, org = v, key = k)
+      (k, m)
+    })
+    .map((k, m) => {
       val model = mc.getModel()
       println(s"using model: ${model.name}")
 
       // Create a new instance named "test instance" with empty target and source fields.
       val event = new InstanceList(model.instances.getPipe)
-      event.addThruPipe(new Instance(v, null, "instance", null))
+      event.addThruPipe(new Instance(m.value, null, "instance", null))
 
       val inferencer = model.model.getInferencer
       val probabilities = inferencer.getSampledDistribution(event.get(0), 10, 1, 5)
@@ -126,7 +132,7 @@ object LDAKStream extends App {
       val stream = util.Arrays.stream(probabilities)
       val p = stream.max.getAsDouble // find the max probability. we don't care which topic it belongs
 
-      (k, Message(value = v, key = k, score = p, modelName = model.name))
+      (k, m.copy(modelName = model.name, score = p))
     })
 
   /**
@@ -160,7 +166,7 @@ object LDAKStream extends App {
     * write the branch(1) into the good topic
     */
   branches(1)
-    .map((k, v) => (k, v.value)) // keep raw messages for feedback loop
+    .map((k, v) => (k, v.org)) // keep raw messages for feedback loop
     .to(appConfig.good)
 
 
@@ -260,7 +266,7 @@ case class ModelConsumer(bootstrapServers: String = "localhost:9092") {
 
     try {
       println(s"getting model from $path")
-      val url = new URL(path)
+      val url = new URL(path.replace("artifactory", "localhost"))
       val connection = url.openConnection().asInstanceOf[HttpURLConnection]
       connection.setRequestMethod("GET")
       val is = connection.getInputStream

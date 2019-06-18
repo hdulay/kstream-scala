@@ -1,7 +1,2 @@
 FROM hseeberger/scala-sbt
-
-CMD scala -J-Xmx2g \
-	-classpath /project/scala-2.12/kstream-scala-assembly-0.1.0-SNAPSHOT.jar \
-	example.LDAKStream \
-	$KAFKA_BOOTSTRAP_SERVERS
-
+RUN ln -sf /root/scala-2.12.2/bin/scala /usr/bin/scala

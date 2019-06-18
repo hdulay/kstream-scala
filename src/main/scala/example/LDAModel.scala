@@ -9,7 +9,7 @@ import java.util.regex.Pattern
 import cc.mallet.pipe._
 import cc.mallet.pipe.iterator.StringArrayIterator
 import cc.mallet.topics.ParallelTopicModel
-import cc.mallet.types.InstanceList
+import cc.mallet.types.{Instance, InstanceList}
 
 
 @SerialVersionUID(1L)
@@ -33,7 +33,6 @@ object LDAModel {
     // Pipes: lowercase, tokenize, remove stopwords, map to features
 
     val regex = "\\b(\\w*[^\\d][\\w\\.\\:]*\\w)\\b"
-    pipeList.add(new CharSequenceLowercase)
     pipeList.add(new CharSequence2TokenSequence(Pattern.compile(regex)))
     //    pipeList.add(new TokenSequenceRemoveStopwords(new File("stopwords.txt"), "UTF-8", false, false, false))
     pipeList.add(new TokenSequence2FeatureSequence)
@@ -59,6 +58,34 @@ object LDAModel {
     val sdf = new SimpleDateFormat("yyyyMMddHHmmss")
     val name = s"lda.model.${sdf.format(new Date(System.currentTimeMillis()))}_size${instances.size()}"
     LDAModel(model, instances, name)
+  }
+}
+
+class DomainPipe extends Pipe {
+  override def pipe(carrier: Instance): Instance = {
+    if (carrier.getData.isInstanceOf[CharSequence]) {
+      val data = carrier.getData.asInstanceOf[CharSequence]
+
+      carrier.setData(data.toString.toLowerCase)
+    }
+    else throw new IllegalArgumentException("CharSequenceLowercase expects a CharSequence, found a " + carrier.getData.getClass)
+    carrier
+  }
+
+  // Serialization
+
+  private val serialVersionUID = 1
+  private val CURRENT_SERIAL_VERSION = 0
+
+  @throws[IOException]
+  private def writeObject(out: ObjectOutputStream): Unit = {
+    out.writeInt(CURRENT_SERIAL_VERSION)
+  }
+
+  @throws[IOException]
+  @throws[ClassNotFoundException]
+  private def readObject(in: ObjectInputStream): Unit = {
+    val version = in.readInt
   }
 }
 

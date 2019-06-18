@@ -10,6 +10,7 @@ ThisBuild / organizationName := "example"
 resolvers += "confluent" at "http://packages.confluent.io/maven/"
 resolvers += Classpaths.typesafeReleases
 resolvers += Resolver.jcenterRepo
+resolvers += "central" at "http://central.maven.org/maven2/"
 
 lazy val root = (project in file("."))
 	.settings(
@@ -36,6 +37,9 @@ lazy val root = (project in file("."))
 		// https://mvnrepository.com/artifact/com.github.scopt/scopt
 		libraryDependencies += "com.github.scopt" %% "scopt" % "3.7.1",
 
+		// https://mvnrepository.com/artifact/org.apache.kafka/connect-api
+		libraryDependencies += "org.apache.kafka" % "connect-api" % "2.2.0",
+
 		libraryDependencies += "net.sf.py4j" % "py4j" % "0.10.8.1"
 
 	)
@@ -54,3 +58,4 @@ assemblyMergeStrategy in assembly := {
 		val oldStrategy = (assemblyMergeStrategy in assembly).value
 		oldStrategy(x)
 }
+
