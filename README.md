@@ -49,7 +49,3 @@ Open 4 terminals
 	```
  
 Model training is ongoing. When completed, the model is placed in a topic. The KStreams app waits for a model to appear and uses it to score incoming message.
-
-## Train the model
-I train the model using LDA. See TrainDNS.scala. This scala class trains the LDA model and serializes it to a Kafka topic. The model is loaded by the KStreams application to score incoming data from a Kakfa topic then routes suspicious dns requests to a separate topic.
-
