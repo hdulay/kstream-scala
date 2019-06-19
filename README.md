@@ -49,3 +49,6 @@ Open 4 terminals
 	```
  
 Model training is ongoing. When completed, the model is placed in a topic. The KStreams app waits for a model to appear and uses it to score incoming message.
+
+# Machine Learning Workflow
+![Workflow](doc/diagram.png)
