@@ -9,28 +9,17 @@ libraryDependencies += "cc.mallet" % "mallet" % "2.0.8",
 Latent Dirichlet allocation (LDA) algorithm.
 LDA is a topic modeling unsupervised learning algorithm. It takes a corpus of text and classifies them under topics.
 
-The data used here is DNS data which can be found here:
-```
-wget https://s3-us-west-2.amazonaws.com/apachespot/public_data_sets/dns_aws/dns_pcap_synthetic_sample.zip
-```
 
-In the zip file are pcap files. To decompress and parse the pcap files, I used a docker image containing zeek (bro).
-```
-docker run --rm -v `pwd`:/pcap -v `pwd`/local.bro:/usr/local/bro/share/bro/site/local.bro blacktop/zeek -r heartbleed.pcap local "Site::local_nets += { 192.168.11.0/24 }"
+## Get Data !!!!!!
+In order to run this demo, you'll need some data. The make command below starts a tcpdump process listening to port 53 and capturing dns logs. It then writes the logs into data/dns.log. You will need a significat amount of data for training so let this run all day ( or a couple of days ).
+```bash
+$ make tcpdump
 ```
 
-You don't have to use the data above nor does it have to be DNS log events. You can train your own data.
-
-
-## Make Steps
-Build the scala code. You will need to install both sbt and scala 2.12 using Homebrew.
+## Running the Demo
+Build the scala KStream code and build docker compose
 ```
 $ make build
-```
-
-Download the data
-```
-$ make ddata
 ```
 
 Build and start the Kafka cluster
@@ -58,10 +47,8 @@ Open 4 terminals
 	> create stream bad (data VARCHAR) WITH (KAFKA_TOPIC='suspicious', VALUE_FORMAT='DELIMITED');
 	> select * from bad;
 	```
-
-
+ 
 Model training is ongoing. When completed, the model is placed in a topic. The KStreams app waits for a model to appear and uses it to score incoming message.
-
 
 ## Train the model
 I train the model using LDA. See TrainDNS.scala. This scala class trains the LDA model and serializes it to a Kafka topic. The model is loaded by the KStreams application to score incoming data from a Kakfa topic then routes suspicious dns requests to a separate topic.
