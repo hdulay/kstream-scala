@@ -9,6 +9,7 @@ do
 		-b broker:29092 \
 		-a artifactory:8080 \
 		-o /project \
-		-c 300000
-	sleep 60
+		-c 300000 \
+		-k 500
+	sleep 120
 done

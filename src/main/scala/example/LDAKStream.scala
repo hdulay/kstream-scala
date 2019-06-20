@@ -21,6 +21,7 @@ import scala.concurrent.{Await, Future}
 
 case class KStreamConfig(name: String = "lda-kstream",
                          broker: String = "localhost:9092",
+                         schemaRegistry: String = "localhost:8081",
                          source: String = "dns",
                          suspicious: String = "suspicious",
                          good: String = "good",
@@ -87,6 +88,11 @@ object LDAKStream extends App {
       .optional()
       .action((x, c) => c.copy(good = x))
       .text("good topic")
+
+    opt[String]('r', "sr")
+      .optional()
+      .action((x, c) => c.copy(schemaRegistry = x))
+      .text("schema registry url")
   }
 
   val appConfig = parser.parse(args, KStreamConfig()).get
@@ -95,8 +101,8 @@ object LDAKStream extends App {
   val config: Properties = {
     val p = new Properties()
     p.put(StreamsConfig.APPLICATION_ID_CONFIG, appConfig.name)
-    val bootstrapServers = appConfig.broker
-    p.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers)
+    p.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, appConfig.broker)
+    p.put("schema.registry.url", appConfig.schemaRegistry)
     p
   }
 
@@ -170,24 +176,27 @@ object LDAKStream extends App {
     .to(appConfig.good)
 
 
-  /**
-    * Build a count of bad and good dns messages and save to
-    * and aggregation topic
-    */
   implicit val message = new MessageSerde
-  val agg = scored
+  scored
     .map((k, v) => {
       val status = if (v.score < appConfig.threshold) "bad" else "good"
       (status, v)
     })
+    .to("dns-scores")
+
+  /**
+    * Build a key value pair of good/bad and score
+    */
+  scored
+    .map((k, v) => {
+      val status = if (v.score < appConfig.threshold) "bad" else "good"
+      (status, v.score)
+    })
     .groupByKey
     .count
-
-  agg.toStream.foreach((k,v) => println(s"$k = $v"))
-
-  agg
     .toStream
-    .to("dns-good-bad-counts")
+    .foreach((k,v) => println(s"$k = $v"))
+
 
   val topology = builder.build()
   val streams: KafkaStreams = new KafkaStreams(topology, config)
@@ -235,7 +244,7 @@ case class ModelConsumer(bootstrapServers: String = "localhost:9092") {
             .toStream
             .max(Ordering[Long].on[ConsumerRecord[String, String]](_.offset())) // get highest offset
           model = deserializeModel(record.value())
-          println(s"new model : ${model.get.name}")
+          println(s"new model : ${model.getOrElse("unable to find model")}")
         }
         else if (model.isEmpty) {
 
@@ -266,7 +275,7 @@ case class ModelConsumer(bootstrapServers: String = "localhost:9092") {
 
     try {
       println(s"getting model from $path")
-      val url = new URL(path.replace("artifactory", "localhost"))
+      val url = new URL(path)
       val connection = url.openConnection().asInstanceOf[HttpURLConnection]
       connection.setRequestMethod("GET")
       val is = connection.getInputStream

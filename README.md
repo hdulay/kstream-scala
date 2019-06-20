@@ -28,7 +28,7 @@ $ make cluster
 ```
 
 Open 4 terminals
-1. Produer
+1. Producer
 	```
 	$ make producer
 	```
@@ -36,19 +36,46 @@ Open 4 terminals
 	```
 	$ make suspicious
 	```
-1. Consumer of good & bad counts
+1. Consumer of good events
 	```
-	$ make agg
+	$ make good
 	```
 
-1. For KSQL. The KSQL will watch for the suspicious topic and print out the bad messages.
+1. Open a KSQL shell to execute commans in the next section
 	```
 	$ make ksql
-	> create stream bad (data VARCHAR) WITH (KAFKA_TOPIC='suspicious', VALUE_FORMAT='DELIMITED');
-	> select * from bad;
 	```
  
-Model training is ongoing. When completed, the model is placed in a topic. The KStreams app waits for a model to appear and uses it to score incoming message.
+# KSQL
+```
+CREATE STREAM dns_scores (
+	value VARCHAR, 
+	key VARCHAR, 
+	score Double, 
+	modelName VARCHAR, 
+	org VARCHAR
+	)
+  WITH (
+	  KAFKA_TOPIC='dns-scores', 
+	  VALUE_FORMAT='JSON', KEY='key'
+	  );
+
+CREATE TABLE dns_scores_agg
+  WITH (VALUE_FORMAT = 'AVRO') AS
+  SELECT rowkey, count(score), min(score), max(score)
+  FROM dns_scores
+  GROUP BY rowkey;
+
+```
+
+# Feedback
+The events sent to the good topic are consumed by a file sink connector into data/feedback.log. This file along wiht data/dns.log are feed into the LDA trainer.
+
+# LDA Model Data
+The corpus that is fed to LDA is assumed "good" events so that when we encounter a bad event, it would not fall into any of the LDA topics.
+
+# Analyzing output
+If the scores start to converge closer to the threshold, consider increasing the number of LDA topics when training ( or __K__ ). In this ML workflow, changing __K__ is a manual adjustment requiring restarting the training service but could be made to be dynamic.
 
 # Machine Learning Workflow
 ![Workflow](doc/diagram.png)
