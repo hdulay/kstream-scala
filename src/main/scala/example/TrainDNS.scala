@@ -50,7 +50,7 @@ class TrainSupport {
           if(toke.count(_ == '.') > 1) {
             val lefti = toke.take(li).lastIndexOf('.')
             val encoded = toke.take(lefti)
-            val enc = if(encoded.length > 10) s"BIGENCODED $encoded" else encoded
+            val enc = if(encoded.length > 50) s"BIGENCODED $encoded" else encoded
             val right = toke.takeRight(toke.length - lefti - 1)
             encoded.split('.') :+ enc :+ right
           } else {

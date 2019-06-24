@@ -27,7 +27,7 @@ Build and start the Kafka cluster
 $ make cluster
 ```
 
-Open 4 terminals
+Open 5 terminals
 1. Producer
 	```
 	$ make producer
@@ -41,10 +41,16 @@ Open 4 terminals
 	$ make good
 	```
 
+1. Consumer of the all scores
+	```
+	$ make scores
+	```
+
 1. Open a KSQL shell to execute commans in the next section
 	```
 	$ make ksql
 	```
+	
  
 # KSQL
 ```
@@ -69,7 +75,7 @@ CREATE TABLE dns_scores_agg
 ```
 
 # Feedback
-The events sent to the good topic are consumed by a file sink connector into data/feedback.log. This file along wiht data/dns.log are feed into the LDA trainer.
+The events sent to the good topic are consumed by a file sink connector into data/feedback.log. This file along with data/dns.log are fed into the LDA trainer.
 
 # LDA Model Data
 The corpus that is fed to LDA is assumed "good" events so that when we encounter a bad event, it would not fall into any of the LDA topics.
