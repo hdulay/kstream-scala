@@ -24,7 +24,6 @@ object LDAKStreamPy4j extends App {
     head("lda-kstream", "1.0")
 
     opt[String]('b', "broker"    ).action((x, c) => c.copy(broker     = x)).text("broker host and port")
-    opt[String]('m', "model"     ).action((x, c) => c.copy(modelPath  = x)).text("the file name of the serialized model")
     opt[String]('n', "name"      ).action((x, c) => c.copy(name       = x)).text("the name of the app")
     opt[String]('s', "source"    ).action((x, c) => c.copy(source     = x)).text("source topic")
     opt[String]('x', "suspicious").action((x, c) => c.copy(suspicious = x)).text("suspicious topic")

@@ -2,7 +2,7 @@ class SimpleModel(object):
 
     def score(self, event):
         print(event)
-		# do lda and return highest probability
+        # do lda and return highest probability
         return .9
 
     class Java:

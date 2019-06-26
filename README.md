@@ -9,32 +9,79 @@ libraryDependencies += "cc.mallet" % "mallet" % "2.0.8",
 Latent Dirichlet allocation (LDA) algorithm.
 LDA is a topic modeling unsupervised learning algorithm. It takes a corpus of text and classifies them under topics.
 
-The data used here is DNS data which can be found here:
-```
-wget https://s3-us-west-2.amazonaws.com/apachespot/public_data_sets/dns_aws/dns_pcap_synthetic_sample.zip
-```
 
-In the zip file are pcap files. To decompress and parse the pcap files, I used a docker image containing zeek (bro).
-```
-docker run --rm -v `pwd`:/pcap -v `pwd`/local.bro:/usr/local/bro/share/bro/site/local.bro blacktop/zeek -r heartbleed.pcap local "Site::local_nets += { 192.168.11.0/24 }"
+## Get Data !!!!!!
+In order to run this demo, you'll need some data. The make command below starts a tcpdump process listening to port 53 and capturing dns logs. It then writes the logs into data/dns.log. You will need a significat amount of data for training so let this run all day ( or a couple of days ) while you surf the net.
+```bash
+$ make tcpdump
 ```
 
-You don't have to use the data above nor does it have to be DNS log events. You can train your own data.
-
-## Train the model
-After downloading, extracting and parsing the dns log data, I train the model using LDA. See TrainDNS.scala. This
-scala class trains the LDA model and serializes the it to a file. This file is loaded by the KStreams application
-to score incoming data from a Kakfa topic then routes suspicious dns requests to a separate topic.
-
-
-## Start the producer
-Start the Kafka cluster. Deploy or run the LDAKStreams.scala application. Depending on how much data you trained the model
-with, you might wait for 5 min. The more data you trained on, the bigger the serialized model and the longer the JVM will
-take to load it to memory. The application will display `model loaded successfully` when finished loading.
-
-Start the producer with the command below and send it messages copied from your dns logs. It should end up in the good
-topic. Next type some random words. This message should end up in the suspicious topic.
+## Running the Demo
+Build the scala KStream code and build docker compose
 ```
-kafka-console-producer --broker-list localhost:9092 --topic dns
+$ make build
 ```
 
+Build and start the Kafka cluster
+```
+$ make cluster
+```
+
+Open 5 terminals
+1. Producer
+	```
+	$ make producer
+	```
+1. Consumer of suspicious events
+	```
+	$ make suspicious
+	```
+1. Consumer of good events
+	```
+	$ make good
+	```
+
+1. Consumer of the all scores
+	```
+	$ make scores
+	```
+
+1. Open a KSQL shell to execute commans in the next section
+	```
+	$ make ksql
+	```
+	
+ 
+# KSQL
+```
+CREATE STREAM dns_scores (
+	value VARCHAR, 
+	key VARCHAR, 
+	score Double, 
+	modelName VARCHAR, 
+	org VARCHAR
+	)
+  WITH (
+	  KAFKA_TOPIC='dns-scores', 
+	  VALUE_FORMAT='JSON', KEY='key'
+	  );
+
+CREATE TABLE dns_scores_agg
+  WITH (VALUE_FORMAT = 'AVRO') AS
+  SELECT rowkey, count(score), min(score), max(score)
+  FROM dns_scores
+  GROUP BY rowkey;
+
+```
+
+# Feedback
+The events sent to the good topic are consumed by a file sink connector into data/feedback.log. This file along with data/dns.log are fed into the LDA trainer.
+
+# LDA Model Data
+The corpus that is fed to LDA is assumed "good" events so that when we encounter a bad event, it would not fall into any of the LDA topics.
+
+# Analyzing output
+If the scores start to converge closer to the threshold, consider increasing the number of LDA topics when training ( or __K__ ). In this ML workflow, changing __K__ is a manual adjustment requiring restarting the training service but could be made to be dynamic.
+
+# Machine Learning Workflow
+![Workflow](doc/diagram.png)
