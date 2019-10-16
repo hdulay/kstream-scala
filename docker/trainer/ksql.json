@@ -1,0 +1,4 @@
+{
+	"ksql": "CREATE STREAM claims WITH (KAFKA_TOPIC='claims',VALUE_FORMAT='AVRO');  CREATE STREAM claims_json WITH (KAFKA_TOPIC='claims_json',VALUE_FORMAT='JSON') AS SELECT * FROM claims;",
+	"streamsProperties": {}
+}

@@ -7,13 +7,15 @@ import java.util.{Arrays, Properties}
 
 import cc.mallet.types.{Instance, InstanceList}
 import com.google.gson.Gson
+import io.confluent.kafka.streams.serdes.avro.GenericAvroSerde
+import org.apache.avro.generic.{GenericData, GenericRecord}
 import org.apache.kafka.clients.consumer._
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{Deserializer, Serde, Serializer, StringDeserializer}
 import org.apache.kafka.streams.scala.ImplicitConversions._
 import org.apache.kafka.streams.scala.Serdes._
-import org.apache.kafka.streams.scala.StreamsBuilder
-import org.apache.kafka.streams.scala.kstream.KStream
+import org.apache.kafka.streams.scala.{Serdes, StreamsBuilder}
+import org.apache.kafka.streams.scala.kstream.{Consumed, KStream, Produced}
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
 
 import scala.concurrent.duration.Duration
@@ -22,7 +24,7 @@ import scala.concurrent.{Await, Future}
 case class KStreamConfig(name: String = "lda-kstream",
                          broker: String = "localhost:9092",
                          schemaRegistry: String = "localhost:8081",
-                         source: String = "dns",
+                         source: String = "claims",
                          suspicious: String = "suspicious",
                          good: String = "good",
                          threshold: Double = .3)
@@ -56,8 +58,8 @@ class MessageSerde extends Serde[Message] {
 
 object LDAKStream extends App {
 
-  val parser = new scopt.OptionParser[KStreamConfig]("dns.trainer") {
-    head("dns.trainer", "0.1")
+  val parser = new scopt.OptionParser[KStreamConfig]("claims.trainer") {
+    head("claims.trainer", "0.1")
 
     opt[Double]('t', "threshold")
       .optional()
@@ -106,27 +108,40 @@ object LDAKStream extends App {
     p
   }
 
+  // Brings all implicit conversions in scope
+  import scala.collection.convert.ImplicitConversions._
+
+  // Bring implicit default serdes in scope
+  import org.apache.kafka.streams.scala.Serdes._
   val builder = new StreamsBuilder()
 
   /**
-    * Make sure you create the DNS topic first else it will not start.
-    */
-  val dnsLogs: KStream[String, String] = builder.stream[String, String](appConfig.source)
+  * Make sure you create the claims topic first else it will not start.
+  */
+  implicit val keySerde = Serdes.String
+  implicit val valueSerde = new GenericAvroSerde()
+  val map = Map("schema.registry.url" -> appConfig.schemaRegistry)
+  valueSerde.configure(map, false)
+  implicit val consumed = Consumed.`with`[String, GenericRecord](Serdes.String, valueSerde)
+  val claims: KStream[String, GenericRecord] = builder.stream[String, GenericRecord](appConfig.source)
+
   val mc = ModelConsumer(appConfig.broker)
   val support = new TrainSupport()
 
   /**
     * Records have been scored by model
     */
-  val scored = dnsLogs
+  val scored = claims
     .map((k, v) => {
-      val prep = support.prep(v)
-      val m = Message(prep, org = v, key = k)
+      val gender = v.get("gender")
+      val procedures: GenericData.Array[String] = v.get("procedures").asInstanceOf[GenericData.Array[String]]
+      val document = s"$gender ${procedures.toArray.mkString(" ")}"
+      val m = Message(document, org = v.toString, key = k)
       (k, m)
     })
     .map((k, m) => {
       val model = mc.getModel()
-      println(s"using model: ${model.name}")
+      println(s"using model: ${model.name} | message: ${m.value}")
 
       // Create a new instance named "test instance" with empty target and source fields.
       val event = new InstanceList(model.instances.getPipe)
@@ -157,6 +172,8 @@ object LDAKStream extends App {
       (k, v) => true
     )
 
+  implicit val produced = Produced.`with`[String, String](Serdes.String,Serdes.String)
+
   /**
     * write the branch(0) into the suspicious topic
     */
@@ -176,26 +193,13 @@ object LDAKStream extends App {
     .to(appConfig.good)
 
 
-  implicit val message = new MessageSerde
+  implicit val messageSerde = new MessageSerde
   scored
     .map((k, v) => {
       val status = if (v.score < appConfig.threshold) "bad" else "good"
       (status, v)
     })
-    .to("dns-scores")
-
-  /**
-    * Build a key value pair of good/bad and score
-    */
-  scored
-    .map((k, v) => {
-      val status = if (v.score < appConfig.threshold) "bad" else "good"
-      (status, v.score)
-    })
-    .groupByKey
-    .count
-    .toStream
-    .foreach((k,v) => println(s"$k = $v"))
+    .to("claims-scores")(Produced.`with`[String, Message](Serdes.String, messageSerde))
 
 
   val topology = builder.build()

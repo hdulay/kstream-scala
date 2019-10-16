@@ -1,7 +1,8 @@
 {
-	"name": "feedback",
+	"name": "trainer",
 	"connector.class": "org.apache.kafka.connect.file.FileStreamSinkConnector",
+	"key.converter": "org.apache.kafka.connect.storage.StringConverter",
 	"value.converter": "org.apache.kafka.connect.storage.StringConverter",
-	"topics": "good",
-	"file": "/project/data/feedback.log"
+	"topics": "claims_json",
+	"file": "/project/data/train.log"
 }

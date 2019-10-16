@@ -34,7 +34,7 @@ object LDAModel {
 
     val regex = "\\b(\\w*[^\\d][\\w\\.\\:]*\\w)\\b"
     pipeList.add(new CharSequence2TokenSequence(Pattern.compile(regex)))
-    //    pipeList.add(new TokenSequenceRemoveStopwords(new File("stopwords.txt"), "UTF-8", false, false, false))
+//    pipeList.add(new TokenSequenceRemoveStopwords(new File("stopwords.txt"), "UTF-8", false, false, false))
     pipeList.add(new TokenSequence2FeatureSequence)
     val sp = new SerialPipes(pipeList)
     val instances = new InstanceList(sp)

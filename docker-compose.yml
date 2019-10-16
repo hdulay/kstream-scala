@@ -2,7 +2,7 @@
 version: '2'
 services:
   zookeeper:
-    image: confluentinc/cp-zookeeper:5.2.1
+    image: confluentinc/cp-zookeeper:5.3.1
     hostname: zookeeper
     container_name: zookeeper
     ports:
@@ -12,7 +12,7 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
 
   broker:
-    image: confluentinc/cp-enterprise-kafka:5.2.1
+    image: confluentinc/cp-enterprise-kafka:5.3.1
     hostname: broker
     container_name: broker
     depends_on:
@@ -20,6 +20,8 @@ services:
     ports:
       - "29092:29092"
       - "9092:9092"
+    volumes:
+      - .:/project
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
@@ -35,7 +37,7 @@ services:
       CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
 
   schema-registry:
-    image: confluentinc/cp-schema-registry:5.2.1
+    image: confluentinc/cp-schema-registry:5.3.1
     hostname: schema-registry
     container_name: schema-registry
     depends_on:
@@ -48,10 +50,10 @@ services:
       SCHEMA_REGISTRY_KAFKASTORE_CONNECTION_URL: 'zookeeper:2181'
 
   connect:
-    image: hubert/kafka-connect-file:5.2.1
+    image: healthcare_demo/kafka-connect-file:5.3.1
     build:
       context: .
-      dockerfile: docker/file-connector/Dockerfile
+      dockerfile: docker/connectors/Dockerfile
     hostname: connect
     container_name: connect
     depends_on:
@@ -81,14 +83,14 @@ services:
       CONNECT_INTERNAL_VALUE_CONVERTER: "org.apache.kafka.connect.json.JsonConverter"
       CONNECT_ZOOKEEPER_CONNECT: 'zookeeper:2181'
       # Assumes image is based on confluentinc/kafka-connect-datagen:latest which is pulling 5.1.1 Connect image
-      CLASSPATH: /usr/share/java/monitoring-interceptors/monitoring-interceptors-5.2.1.jar
+      CLASSPATH: /usr/share/java/monitoring-interceptors/monitoring-interceptors-5.3.1.jar
       CONNECT_PRODUCER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor"
       CONNECT_CONSUMER_INTERCEPTOR_CLASSES: "io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor"
       CONNECT_PLUGIN_PATH: "/usr/share/java,/usr/share/confluent-hub-components"
       CONNECT_LOG4J_LOGGERS: org.apache.zookeeper=ERROR,org.I0Itec.zkclient=ERROR,org.reflections=ERROR
 
   control-center:
-    image: confluentinc/cp-enterprise-control-center:5.2.1
+    image: confluentinc/cp-enterprise-control-center:5.3.1
     hostname: control-center
     container_name: control-center
     depends_on:
@@ -113,7 +115,7 @@ services:
       PORT: 9021
 
   ksql-server:
-    image: confluentinc/cp-ksql-server:5.2.1
+    image: confluentinc/cp-ksql-server:5.3.1
     hostname: ksql-server
     container_name: ksql-server
     depends_on:
@@ -121,6 +123,8 @@ services:
       - connect
     ports:
       - "8088:8088"
+    volumes:
+      - .:/project
     environment:
       KSQL_CONFIG_DIR: "/etc/ksql"
       KSQL_LOG4J_OPTS: "-Dlog4j.configuration=file:/etc/ksql/log4j-rolling.properties"
@@ -135,7 +139,7 @@ services:
       LDA_MODEL: /etc/ksql/lda.model
 
   ksql-cli:
-    image: confluentinc/cp-ksql-cli:5.2.1
+    image: confluentinc/cp-ksql-cli:5.3.1
     container_name: ksql-cli
     depends_on:
       - broker
@@ -144,32 +148,32 @@ services:
     entrypoint: /bin/sh
     tty: true
 
-  ksql-datagen:
-    # Downrev ksql-examples to 5.1.2 due to DEVX-798 (work around issues in 5.2.0)
-    image: confluentinc/ksql-examples:5.1.2
-    hostname: ksql-datagen
-    container_name: ksql-datagen
-    depends_on:
-      - ksql-server
-      - broker
-      - schema-registry
-      - connect
-    command: "bash -c 'echo Waiting for Kafka to be ready... && \
-                       cub kafka-ready -b broker:29092 1 40 && \
-                       echo Waiting for Confluent Schema Registry to be ready... && \
-                       cub sr-ready schema-registry 8081 40 && \
-                       echo Waiting a few seconds for topic creation to finish... && \
-                       sleep 11 && \
-                       tail -f /dev/null'"
-    environment:
-      KSQL_CONFIG_DIR: "/etc/ksql"
-      KSQL_LOG4J_OPTS: "-Dlog4j.configuration=file:/etc/ksql/log4j-rolling.properties"
-      STREAMS_BOOTSTRAP_SERVERS: broker:29092
-      STREAMS_SCHEMA_REGISTRY_HOST: schema-registry
-      STREAMS_SCHEMA_REGISTRY_PORT: 8081
+  # ksql-datagen:
+  #   # Downrev ksql-examples to 5.1.2 due to DEVX-798 (work around issues in 5.2.0)
+  #   image: confluentinc/ksql-examples:5.1.2
+  #   hostname: ksql-datagen
+  #   container_name: ksql-datagen
+  #   depends_on:
+  #     - ksql-server
+  #     - broker
+  #     - schema-registry
+  #     - connect
+  #   command: "bash -c 'echo Waiting for Kafka to be ready... && \
+  #                      cub kafka-ready -b broker:29092 1 40 && \
+  #                      echo Waiting for Confluent Schema Registry to be ready... && \
+  #                      cub sr-ready schema-registry 8081 40 && \
+  #                      echo Waiting a few seconds for topic creation to finish... && \
+  #                      sleep 11 && \
+  #                      tail -f /dev/null'"
+  #   environment:
+  #     KSQL_CONFIG_DIR: "/etc/ksql"
+  #     KSQL_LOG4J_OPTS: "-Dlog4j.configuration=file:/etc/ksql/log4j-rolling.properties"
+  #     STREAMS_BOOTSTRAP_SERVERS: broker:29092
+  #     STREAMS_SCHEMA_REGISTRY_HOST: schema-registry
+  #     STREAMS_SCHEMA_REGISTRY_PORT: 8081
 
   rest-proxy:
-    image: confluentinc/cp-kafka-rest:5.2.1
+    image: confluentinc/cp-kafka-rest:5.3.1
     depends_on:
       - zookeeper
       - broker
@@ -196,7 +200,7 @@ services:
   trainer:
       image: lda-trainer/scala
       depends_on:
-        - zookeeper
+        - broker
         - artifactory
       build:
         context: .
@@ -204,14 +208,13 @@ services:
       hostname: trainer
       container_name: trainer
       command: /project/docker/trainer/start.sh
-      # command: tail -F anything
       volumes:
         - .:/project
 
   kstream:
       image: lda-kstream/scala
       depends_on:
-        - zookeeper
+        - broker
         - artifactory
       build:
         context: .
@@ -219,6 +222,5 @@ services:
       hostname: kstream
       container_name: kstream
       command: /project/docker/kstream/start.sh
-      # command: tail -F anything
       volumes:
         - .:/project

@@ -4,7 +4,7 @@ for i in {1..100}
 do 
 	scala \
 		-J-Xmx3g \
-		-classpath /project/target/scala-2.12/kstream-scala-assembly-0.1.0-SNAPSHOT.jar example.TrainDNS \
+		-classpath /project/target/scala-2.12/healthcare-claims-ml-demo-assembly-0.1.0-SNAPSHOT.jar example.TrainDocs \
 		-d /project/data \
 		-b broker:29092 \
 		-a artifactory:8080 \

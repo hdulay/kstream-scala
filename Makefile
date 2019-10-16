@@ -4,7 +4,8 @@ dbuild:
 	docker-compose build
 
 sbuild:
-	docker run --rm -it -v ${PWD}:/project -w /project hseeberger/scala-sbt sbt clean assembly
+	#https://blog.scalents.com/2019/01/16/about-packaging-type-error-when-sbt-resolves-dependencies/
+	docker run --rm -it -v ${PWD}:/project -w /project mozilla/sbt:1.3.3 sbt clean compile > /dev/null 2>&1 || sbt assembly
 
 tcpdump: 
 	sudo tcpdump port 53 >> data/dns.log
@@ -18,10 +19,10 @@ up:
 
 topics:
 	echo "creating topics"
-	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create --topic dns --partitions 1 --replication-factor 1
+	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create --topic claims --partitions 1 --replication-factor 1
 	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create --topic suspicious --partitions 1 --replication-factor 1
 	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create --topic good --partitions 1 --replication-factor 1
-	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create --topic dns-scores --partitions 1 --replication-factor 1
+	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create --topic claims-scores --partitions 1 --replication-factor 1
 	docker exec -it broker kafka-topics --bootstrap-server broker:9092 --create \
 		--topic lda-model \
 		--partitions 1 \
@@ -30,15 +31,25 @@ topics:
 		--config cleanup.policy=compact
 
 connect:
-	echo "starting connect file sink"
-	sleep 30
-	docker exec -it connect curl -d "@/project/docker/file-connector/create-file-connector.json" \
+	docker exec -it connect curl -d "@/project/docker/claims-gen/claims.json" \
 		-X PUT \
 		-H "Content-Type: application/json" \
-		http://connect:8083/connectors/feedback/config | jq 
+		http://connect:8083/connectors/claims-gen/config
+
+	docker exec -it ksql-server curl -X "POST" "http://ksql-server:8088/ksql" \
+     -H "Content-Type: application/vnd.ksql.v1+json; charset=utf-8" \
+     -d @/project/docker/trainer/ksql.json
+	
+	docker exec -it connect curl -d "@/project/docker/trainer/trainer.json" \
+		-X PUT \
+		-H "Content-Type: application/json" \
+		http://connect:8083/connectors/trainer/config
+		
 
 producer:
-	docker exec -it broker kafka-console-producer --broker-list localhost:9092 --topic dns
+	docker exec -it broker kafka-avro-console-producer \
+         --broker-list localhost:9092 --topic claims \
+         --property value.schema='$(cat /project/claims/claims.avro )'
 
 lda-model:
 	docker exec -it broker kafka-console-consumer --bootstrap-server localhost:9092 --topic lda-model --from-beginning
@@ -71,7 +82,7 @@ crestart:
 ksql:
 	docker exec -it ksql-cli ksql http://ksql-server:8088
 
-down:
+down: clean
 	docker-compose down
 
 ps:

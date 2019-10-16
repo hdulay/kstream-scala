@@ -13,7 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM confluentinc/cp-kafka-connect:5.2.1
+FROM confluentinc/cp-kafka-connect:5.3.1
 
 RUN sed -i 's/KAFKA_HEAP_OPTS="-Xmx256M"/KAFKA_HEAP_OPTS="-Xmx1024M"/g' /usr/bin/kafka-run-class
 RUN sed -i 's/export KAFKA_HEAP_OPTS="-Xms256M -Xmx2G"/export KAFKA_HEAP_OPTS="-Xms1024M -Xmx3G"/g' /usr/bin/connect-distributed
+RUN confluent-hub install --no-prompt confluentinc/kafka-connect-datagen:latest
+# RUN confluent-hub install --no-prompt rockset/kafka-connect-rockset:1.2.0
+

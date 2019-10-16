@@ -1,0 +1,11 @@
+{
+	"name": "claims-gen",
+	"connector.class": "io.confluent.kafka.connect.datagen.DatagenConnector",
+	"kafka.topic": "claims",
+	"schema.filename": "/project/docker/claims-gen/claims.avro",
+	"schema.keyfield": "userid",
+	"key.converter": "org.apache.kafka.connect.storage.StringConverter",
+	"value.converter": "io.confluent.connect.avro.AvroConverter",
+	"value.converter.schema.registry.url": "http://schema-registry:8081",
+	"tasks.max": "1"
+  }

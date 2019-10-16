@@ -4,7 +4,8 @@ import java.io._
 import java.nio.file.{Files, Paths}
 import java.util._
 
-import example.TrainDNS.model
+import com.google.gson.Gson
+import example.TrainDocs.model
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig, ProducerRecord, RecordMetadata}
 import org.apache.kafka.common.serialization.StringSerializer
 import org.slf4j.LoggerFactory
@@ -18,7 +19,7 @@ case class TrainingConfig(
  count: Int = 300000,
  dataDir: String = "./data",
  outDir: String = ".",
- topics: java.util.Collection[String] = Arrays.asList("dns-train", "good"),
+ topics: java.util.Collection[String] = Arrays.asList("claims_json"),
  bootstrapServers: String = "localhost:9092",
  artifactory: String = "localhost:8080"
 )
@@ -73,7 +74,7 @@ class TrainSupport {
   }
 }
 
-object TrainDNS extends App {
+object TrainDocs extends App {
 
   val logger = LoggerFactory.getLogger("lda-trainer")
 
@@ -143,7 +144,14 @@ object TrainDNS extends App {
     .toArray
     .reverse                         // reversing to get last 300k
     .slice(0, config.count)          // limiting to 300k
-    .map(line => support.prep(line.toString))
+    .map(line => line.toString)
+    .map(line => {
+      val gson = new Gson()
+      val map = gson.fromJson(line, classOf[Map[String, Object]])
+      val gender = map.get("GENDER").asInstanceOf[String].toString
+      val procedures = map.get("PROCEDURES").asInstanceOf[ArrayList[Long]].toArray.mkString(" ")
+      s"$gender $procedures"
+    })
     .asInstanceOf[Array[String]]
 
   val baos = new ByteArrayOutputStream()

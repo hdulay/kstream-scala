@@ -1,0 +1,71 @@
+{
+        "namespace": "connector",
+        "name": "claims",
+        "type": "record",
+        "fields": [
+                {"name": "effectivedate", "type": {
+                    "type": "long",
+                    "arg.properties": {
+                        "range": {
+                            "min": 1487715775521,
+                            "max": 1519273364600
+                        }
+                    }
+                }},
+                {"name": "userid", "type": {
+                    "type": "string",
+                    "arg.properties": {
+                        "regex": "User_[1-9]{0,1}"
+                    }
+                }},
+                {"name": "regionid", "type": {
+                    "type": "string",
+                    "arg.properties": {
+                        "regex": "Region_[1-9]?"
+                    }
+                }},
+                {"name": "gender", "type": {
+                    "type": "string",
+                    "arg.properties": {
+                        "options": [
+                            "MALE",
+                            "FEMALE",
+                            "OTHER"
+                        ]
+                    }
+                }},
+				{
+                      "name": "procedures",
+                      "type": {
+                        "type": "array",
+                        "items": "string",
+                        "arg.properties":
+                          {
+                            "options": [
+                              [
+                                "77300",
+                                "77295"
+                              ],
+                              [
+                                "30465",
+                                "20912",
+								"30140"
+                              ],
+                              [
+                                "93650",
+                                "93653",
+								"93654",
+								"93656"
+                              ],
+                              [
+                                "64400",
+                                "64405",
+								"64505",
+								"64510"
+                              ]
+                            ]
+                          }
+                      }
+                }
+        ]
+}

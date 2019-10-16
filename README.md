@@ -16,69 +16,43 @@ In order to run this demo, you'll need some data. The make command below starts 
 $ make tcpdump
 ```
 
-## Running the Demo
+### Running the Demo
+
 Build the scala KStream code and build docker compose
-```
-$ make build
-```
 
-Build and start the Kafka cluster
-```
-$ make cluster
+```bash
+make build
+make cluster
+make connect
 ```
 
-Open 5 terminals
-1. Producer
-	```
-	$ make producer
-	```
-1. Consumer of suspicious events
-	```
-	$ make suspicious
-	```
-1. Consumer of good events
-	```
-	$ make good
-	```
+## KSQL
 
-1. Consumer of the all scores
-	```
-	$ make scores
-	```
+Transform the AVRO message to CSV for easy training
 
-1. Open a KSQL shell to execute commans in the next section
-	```
-	$ make ksql
-	```
-	
- 
-# KSQL
+``` sql
+CREATE STREAM claims WITH (KAFKA_TOPIC='claims',VALUE_FORMAT='AVRO');
+CREATE STREAM claims_json WITH (KAFKA_TOPIC='claims_json',VALUE_FORMAT='JSON') AS SELECT * FROM claims;
 ```
-CREATE STREAM dns_scores (
-	value VARCHAR, 
-	key VARCHAR, 
-	score Double, 
-	modelName VARCHAR, 
-	org VARCHAR
-	)
-  WITH (
-	  KAFKA_TOPIC='dns-scores', 
-	  VALUE_FORMAT='JSON', KEY='key'
-	  );
 
-CREATE TABLE dns_scores_agg
-  WITH (VALUE_FORMAT = 'AVRO') AS
-  SELECT rowkey, count(score), min(score), max(score)
-  FROM dns_scores
+```sql
+CREATE STREAM claim_scores (
+ value VARCHAR,
+ key VARCHAR,
+ score Double,
+ modelName VARCHAR,
+ org VARCHAR
+)
+WITH (
+  KAFKA_TOPIC='claims-scores', 
+  VALUE_FORMAT='JSON', KEY='key'
+);
+
+SELECT rowkey, count(score), min(score), max(score)
+  FROM claim_scores
   GROUP BY rowkey;
 
 ```
-
-# Feedback
-The events sent to the good topic are consumed by a file sink connector into data/feedback.log. This file along with data/dns.log are fed into the LDA trainer.
-
-# LDA Model Data
-The corpus that is fed to LDA is assumed "good" events so that when we encounter a bad event, it would not fall into any of the LDA topics.
 
 # Analyzing output
 If the scores start to converge closer to the threshold, consider increasing the number of LDA topics when training ( or __K__ ). In this ML workflow, changing __K__ is a manual adjustment requiring restarting the training service but could be made to be dynamic.
