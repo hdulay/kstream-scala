@@ -7,9 +7,6 @@ sbuild:
 	#https://blog.scalents.com/2019/01/16/about-packaging-type-error-when-sbt-resolves-dependencies/
 	docker run --rm -it -v ${PWD}:/project -w /project mozilla/sbt:1.3.3 sbt clean compile > /dev/null 2>&1 || sbt assembly
 
-tcpdump: 
-	sudo tcpdump port 53 >> data/dns.log
-
 cluster: up topics connect
 
 up:
@@ -29,6 +26,7 @@ topics:
 		--replication-factor 1 \
 		--config retention.ms=60000 \
 		--config cleanup.policy=compact
+	sleep 10
 
 connect:
 	docker exec -it connect curl -d "@/project/docker/claims-gen/claims.json" \
