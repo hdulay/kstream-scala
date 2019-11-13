@@ -12,10 +12,8 @@ import org.apache.avro.generic.{GenericData, GenericRecord}
 import org.apache.kafka.clients.consumer._
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization.{Deserializer, Serde, Serializer, StringDeserializer}
-import org.apache.kafka.streams.scala.ImplicitConversions._
-import org.apache.kafka.streams.scala.Serdes._
-import org.apache.kafka.streams.scala.{Serdes, StreamsBuilder}
 import org.apache.kafka.streams.scala.kstream.{Consumed, KStream, Produced}
+import org.apache.kafka.streams.scala.{Serdes, StreamsBuilder}
 import org.apache.kafka.streams.{KafkaStreams, StreamsConfig}
 
 import scala.concurrent.duration.Duration
@@ -112,7 +110,6 @@ object LDAKStream extends App {
   import scala.collection.convert.ImplicitConversions._
 
   // Bring implicit default serdes in scope
-  import org.apache.kafka.streams.scala.Serdes._
   val builder = new StreamsBuilder()
 
   /**
