@@ -89,4 +89,4 @@ ps:
 	docker-compose ps
 
 clean:
-	rm lda.*
+	rm -f lda.*
